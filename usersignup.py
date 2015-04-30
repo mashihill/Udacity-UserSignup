@@ -107,7 +107,7 @@ class MainPage(webapp2.RequestHandler):
 class ThanksHandler(webapp2.RequestHandler):
         def get(self):
             user_name = self.request.get('username')
-            self.response.out.write("Hi, %s"%user_name)
+            self.response.out.write("Welcome %s"%user_name)
 
 app = webapp2.WSGIApplication([
     ('/', MainPage),
