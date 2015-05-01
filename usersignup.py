@@ -32,6 +32,17 @@ class BaseHandler(webapp2.RequestHandler):
     def render(self, template, **kw):
         self.response.out.write(render_str(template, **kw))
 
+class Rot13(BaseHandler):
+    def get(self):
+        self.render("rot13-form.html")
+
+    def post(self):
+        rot13 = ''
+        text = self.request.get('text')
+        if text:
+            rot13 = text.encode('rot13')
+
+        self.render('rot13-form.html', text = rot13)
 
 class SignUp(BaseHandler):
 
@@ -76,5 +87,6 @@ class ThanksHandler(BaseHandler):
 app = webapp2.WSGIApplication([
     #('/', MainPage),
     ('/SignUp', SignUp),
+    ('/Rot13', Rot13),
     ('/thanks', ThanksHandler)
 ], debug=True)
