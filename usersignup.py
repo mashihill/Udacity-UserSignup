@@ -139,6 +139,11 @@ class LogIn(BaseHandler):
                 error['error_password'] = 'please fillin password'
             self.render("login-form.html", **error)
 
+class LogOut(BaseHandler):
+    def get(self):
+        self.response.headers.add_header('Set-Cookie', 'username=; Path=/')
+        #self.response.headers.add_header('Set-Cookie', 'Path=/')
+        self.redirect('/signup')
 
 class Welcome(BaseHandler):
     def get(self):
@@ -152,5 +157,6 @@ app = webapp2.WSGIApplication([
     ('/', Welcome),
     ('/signup', SignUp),
     ('/login', LogIn),
+    ('/logout', LogOut),
     ('/rot13', Rot13)
 ], debug=True)
