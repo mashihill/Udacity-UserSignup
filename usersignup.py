@@ -3,6 +3,24 @@ import webapp2
 import jinja2
 import cgi
 import re
+import hmac
+
+from google.appengine.ext import db
+
+SECRET = 'b99201001'
+
+def make_salt():
+    return ''.join(random.choice(string.letters) for x in xrange(5))
+
+def make_pw_hash(name, pw, salt=None):
+    if not salt:
+        salt=make_salt()
+    h = hashlib.sha256(name + pw + salt).hexdigest()
+    return '%s,%s' % (h, salt)
+
+def valid_pw(name, pw, h):
+    salt = h.split(',')[1]
+    return h == make_pw_hash(name, pw, salt)
 
 USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
 PW_RE = re.compile(r"^.{3,20}$")
@@ -15,9 +33,6 @@ jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(tmplate_dir),
 def render_str(template, **params):
     temp = jinja_env.get_template(template)
     return temp.render(params)
-
-def escape_html(s):
-    return cgi.escape(s, quote = True)
 
 def valid_username(username):
     return username and USER_RE.match(username)
@@ -32,6 +47,14 @@ class BaseHandler(webapp2.RequestHandler):
     def render(self, template, **kw):
         self.response.out.write(render_str(template, **kw))
 
+    def write(self, *a, **kw):
+        self.response.out.write(*a, **kw)
+
+class User(db.Model):
+    name = db.StringProperty(required = True)
+    hashpw = db.StringProperty(required = True)
+    created = db.DateTimeProperty(auto_now_add = True)
+
 class Rot13(BaseHandler):
     def get(self):
         self.render("rot13-form.html")
@@ -44,8 +67,14 @@ class Rot13(BaseHandler):
 
         self.render('rot13-form.html', text = rot13)
 
-class SignUp(BaseHandler):
+def cookie_make(username):
+    return '%s|%s' % (username, hmac.new(SECRET, username).hexdigest())
 
+def cookie_check_user(cookie):
+    val = cookie.split('|')[0]
+    return val if cookie_make(val) == cookie else None
+
+class SignUp(BaseHandler):
     def get(self):
         self.render("signup-form.html")
 
@@ -60,32 +89,40 @@ class SignUp(BaseHandler):
 
         if not valid_username(username):
             have_error = True
-            tmp_kargs['error_username'] = 'Invalid username!!'
+            tmp_kargs['error_username'] = 'Invalid username!'
 
         if not valid_password(password):
             have_error = True
-            tmp_kargs['error_password'] = 'Invalid password!!'
+            tmp_kargs['error_password'] = 'Invalid password!'
         elif password != verify:
             have_error = True
-            tmp_kargs['error_verify'] = 'Different password!!'
+            tmp_kargs['error_verify'] = 'Different password!'
 
         if not valid_email(email):
             have_error = True
-            tmp_kargs['error_email'] = 'Invalid email!!'
+            tmp_kargs['error_email'] = 'Invalid email!'
 
         if have_error:
             self.render("signup-form.html", **tmp_kargs)
         else:
-            self.redirect("/thanks?username=%s" % username)
+            #hashpw = make_pw_hash(username, password)
+            cookie = str(cookie_make(username))
+            print 'cookie', cookie
+            self.response.headers.add_header('Set-Cookie', 'username=%s; Path=/' % cookie )
+            #User(username = username, hashpw = hashpw).put()
+            self.redirect('/')
 
-class ThanksHandler(BaseHandler):
-        def get(self):
-            username = self.request.get('username')
-            self.response.out.write("Welcome %s" % username)
+
+class Welcome(BaseHandler):
+    def get(self):
+        username_cookie = self.request.cookies.get('username', 'None')
+        if cookie_check_user(username_cookie):
+            self.render('welcome.html', username = username_cookie.split('|')[0])
+        else:
+            self.redirect('/signup')
 
 app = webapp2.WSGIApplication([
-    #('/', MainPage),
-    ('/SignUp', SignUp),
-    ('/Rot13', Rot13),
-    ('/thanks', ThanksHandler)
+    ('/', Welcome),
+    ('/signup', SignUp),
+    ('/rot13', Rot13)
 ], debug=True)
