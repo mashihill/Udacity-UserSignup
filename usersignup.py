@@ -72,7 +72,6 @@ class SignUp(BaseHandler):
         if not valid_email(email):
             have_error = True
             tmp_kargs['error_email'] = 'Invalid email!!'
-            
 
         if have_error:
             self.render("signup-form.html", **tmp_kargs)
