@@ -4,8 +4,18 @@ import jinja2
 import cgi
 import re
 import hmac
+import random
+import string
+import hashlib
 
 from google.appengine.ext import db
+tmplate_dir = os.path.join(os.path.dirname(__file__), 'templates')
+jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(tmplate_dir),
+                               autoescape = True)
+
+USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
+PW_RE = re.compile(r"^.{3,20}$")
+EM_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
 
 SECRET = 'b99201001'
 
@@ -22,14 +32,6 @@ def valid_pw(name, pw, h):
     salt = h.split(',')[1]
     return h == make_pw_hash(name, pw, salt)
 
-USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
-PW_RE = re.compile(r"^.{3,20}$")
-EM_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
-
-tmplate_dir = os.path.join(os.path.dirname(__file__), 'templates')
-jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(tmplate_dir),
-                               autoescape = True)
-
 def render_str(template, **params):
     temp = jinja_env.get_template(template)
     return temp.render(params)
@@ -43,17 +45,17 @@ def valid_password(password):
 def valid_email(email):
     return not email or EM_RE.match(email)
 
+class User(db.Model):
+    username = db.StringProperty(required = True)
+    hashpw = db.StringProperty(required = True)
+    created = db.DateTimeProperty(auto_now_add = True)
+
 class BaseHandler(webapp2.RequestHandler):
     def render(self, template, **kw):
         self.response.out.write(render_str(template, **kw))
 
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
-
-class User(db.Model):
-    name = db.StringProperty(required = True)
-    hashpw = db.StringProperty(required = True)
-    created = db.DateTimeProperty(auto_now_add = True)
 
 class Rot13(BaseHandler):
     def get(self):
@@ -105,12 +107,37 @@ class SignUp(BaseHandler):
         if have_error:
             self.render("signup-form.html", **tmp_kargs)
         else:
-            #hashpw = make_pw_hash(username, password)
+            hashpw = make_pw_hash(username, password)
             cookie = str(cookie_make(username))
-            print 'cookie', cookie
             self.response.headers.add_header('Set-Cookie', 'username=%s; Path=/' % cookie )
-            #User(username = username, hashpw = hashpw).put()
+            print 'un', username, 'hp', hashpw
+            a = User(username = username, hashpw = hashpw)
+            a.put()
             self.redirect('/')
+
+class LogIn(BaseHandler):
+    def get(self):
+        self.render("login-form.html")
+
+    def post(self):
+        username = self.request.get('username')
+        password = self.request.get('password')
+        if username and password:
+            u = User.all().filter('username =', username).get() 
+            if u and valid_pw(username, password, u.hashpw):
+                cookie = str(cookie_make(username))
+                self.response.headers.add_header('Set-Cookie', 'username=%s; Path=/' % cookie )
+                self.redirect('/')
+            else:
+                error = 'invalid login'
+                self.render("login-form.html", error=error)
+        else:
+            error = dict(username=username)
+            if not username:
+                error['error_username'] = 'please fillin username'
+            if not password:
+                error['error_password'] = 'please fillin password'
+            self.render("login-form.html", **error)
 
 
 class Welcome(BaseHandler):
@@ -124,5 +151,6 @@ class Welcome(BaseHandler):
 app = webapp2.WSGIApplication([
     ('/', Welcome),
     ('/signup', SignUp),
+    ('/login', LogIn),
     ('/rot13', Rot13)
 ], debug=True)
